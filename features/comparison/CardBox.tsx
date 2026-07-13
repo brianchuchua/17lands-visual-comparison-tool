@@ -14,14 +14,16 @@ interface CardBoxProps {
 const formatAttribute = (attributeValue: string, usePercentage?: boolean) => {
   const style = usePercentage ? 'percent' : 'decimal';
 
-  const attributeValueFormatted = !Number.isNaN(attributeValue)
-    ? Number(attributeValue).toLocaleString(undefined, {
-        style,
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })
-    : 'N/A';
-  return attributeValueFormatted;
+  // 17Lands nulls out win rates for cards with small sample sizes (< 500 games)
+  if (attributeValue === null || attributeValue === undefined || Number.isNaN(Number(attributeValue))) {
+    return 'N/A';
+  }
+
+  return Number(attributeValue).toLocaleString(undefined, {
+    style,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 };
 
 const CardBox: React.FC<CardBoxProps> = ({ card, attributeLabel, attributeValue, attributeKey, loading, additionalDataToShow }) => {

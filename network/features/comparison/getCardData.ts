@@ -8,21 +8,20 @@ interface CardDataParams {
   expansion: string;
   format: string;
   colors?: string;
-  startDate?: string;
-  endDate?: string;
+  timePeriod?: string;
 }
 
-export const getCardData: GetCardDataFunction = async ({ expansion, format, colors, startDate, endDate }) => {
+export const getCardData: GetCardDataFunction = async ({ expansion, format, colors, timePeriod }) => {
   try {
-    const response = await getWithCache(`https://www.17lands.com/card_ratings/data`, {
+    const response = await getWithCache(`https://api.17lands.com/api/card_data`, {
       expansion,
-      format,
+      event_type: format,
       colors,
-      start_date: startDate,
-      end_date: endDate,
+      time_period: timePeriod || 'ALL_TIME',
     });
 
-    return response;
+    // The card list is nested under a "data" key, alongside copyright/notes fields
+    return response?.data ?? [];
   } catch (error) {
     return null;
   }

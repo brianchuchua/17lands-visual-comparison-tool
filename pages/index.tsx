@@ -22,6 +22,7 @@ import { getFiltersProxy } from '../network/features/comparison/getFiltersProxy'
 import CardBox, { Card } from '../features/comparison/CardBox';
 import AutocompleteWithNegation, { AutocompleteOption } from '../components/AutocompleteWithNegation';
 import { sortByOptions } from '../features/comparison/sortByOptions';
+import { timePeriodOptions } from '../features/comparison/timePeriodOptions';
 
 const HomePage: React.FC = () => {
   const [selectableCards, setSelectableCards] = useState([]);
@@ -32,14 +33,7 @@ const HomePage: React.FC = () => {
   const [selectedFormat, setSelectedFormat] = useState('PremierDraft');
   const [selectedDeckColors, setSelectedDeckColors] = useState('');
 
-  const today = new Date();
-  const fourMonthsAgo = new Date();
-  fourMonthsAgo.setMonth(today.getMonth() - 4);
-  const defaultStartDate = fourMonthsAgo.toISOString().slice(0, 10);
-  const defaultEndDate = today.toISOString().slice(0, 10);
-
-  const [startDate, setStartDate] = useState(defaultStartDate);
-  const [endDate, setEndDate] = useState(defaultEndDate);
+  const [selectedTimePeriod, setSelectedTimePeriod] = useState('ALL_TIME');
 
   const [settingsMenuAnchorElement, setSettingsMenuAnchorElement] = useState<null | HTMLElement>(null);
   const [viewAllCards, setViewAllCards] = useState(false);
@@ -167,13 +161,13 @@ const HomePage: React.FC = () => {
         return;
       }
       setLoading(true);
-      const fetchedCards = await getCardDataProxy({
-        expansion: selectedExpansion,
-        format: selectedFormat,
-        colors: selectedDeckColors,
-        startDate,
-        endDate,
-      });
+      const fetchedCards =
+        (await getCardDataProxy({
+          expansion: selectedExpansion,
+          format: selectedFormat,
+          colors: selectedDeckColors,
+          timePeriod: selectedTimePeriod,
+        })) || [];
       setCards(fetchedCards);
       setSelectableCards(mapCardsToAutocompleteOption(fetchedCards));
       const updatedSelectedCards = selectedCards.map((card) => {
@@ -188,7 +182,7 @@ const HomePage: React.FC = () => {
       setLoading(false);
     };
     fetchCards();
-  }, [selectedExpansion, selectedFormat, selectedDeckColors, startDate, endDate]);
+  }, [selectedExpansion, selectedFormat, selectedDeckColors, selectedTimePeriod]);
 
   useEffect(() => {
     setSelectableCards(mapCardsToAutocompleteOption(cards));
@@ -279,14 +273,9 @@ const HomePage: React.FC = () => {
     setSelectedFormat(newSelectedFormat);
   };
 
-  const handleStartDateChange = (event: React.ChangeEvent<{ value: unknown }>) => {
-    const newStartDate = event.target.value as string;
-    setStartDate(newStartDate);
-  };
-
-  const handleEndDateChange = (event: React.ChangeEvent<{ value: unknown }>) => {
-    const newEndDate = event.target.value as string;
-    setEndDate(newEndDate);
+  const handleSelectedTimePeriodChange = (event: React.ChangeEvent<{ value: unknown }>) => {
+    const newTimePeriod = event.target.value as string;
+    setSelectedTimePeriod(newTimePeriod);
   };
 
   const handleSelectedDeckColorsChange = (event: React.ChangeEvent<{ value: unknown }>) => {
@@ -602,26 +591,16 @@ const HomePage: React.FC = () => {
           </FormControl>
         </Grid>
         <Grid item>
-          <TextField
-            label="Start Date"
-            type="date"
-            value={startDate}
-            onChange={handleStartDateChange}
-            InputLabelProps={{
-              shrink: true,
-            }}
-          />
-        </Grid>
-        <Grid item>
-          <TextField
-            label="End Date"
-            type="date"
-            value={endDate}
-            onChange={handleEndDateChange}
-            InputLabelProps={{
-              shrink: true,
-            }}
-          />
+          <FormControl>
+            <InputLabel>Time Period</InputLabel>
+            <Select value={selectedTimePeriod} onChange={handleSelectedTimePeriodChange} style={{ minWidth: '100px' }}>
+              {timePeriodOptions.map((option) => (
+                <MenuItem key={option.name} value={option.name}>
+                  {option.label}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
         </Grid>
       </Grid>
       <Grid container spacing={3} alignItems="center" justifyContent="center" style={{ marginTop: '10px' }}>
