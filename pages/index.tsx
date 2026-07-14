@@ -400,6 +400,7 @@ const HomePage: React.FC = () => {
               value={searchText}
               onChange={(e) => handleSearchTextChange(e.target.value)}
               placeholder={loading ? 'Loading...' : 'Type to filter cards'}
+              inputProps={{ autoComplete: 'off', autoCorrect: 'off', autoCapitalize: 'none', spellCheck: 'false' }}
             />
           ) : (
             <AutocompleteWithNegation

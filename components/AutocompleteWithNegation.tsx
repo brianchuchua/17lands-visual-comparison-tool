@@ -39,7 +39,16 @@ const AutocompleteWithNegation: React.FC<AutocompleteWithNegationProps> = ({
     groupBy={(option) => option.category}
     getOptionLabel={(option) => option.label}
     getOptionSelected={(option, value) => option.value === value.value}
-    renderInput={(params) => <TextField autoFocus {...params} label={label} variant="outlined" placeholder={placeholder} />}
+    renderInput={(params) => (
+      <TextField
+        autoFocus
+        {...params}
+        label={label}
+        variant="outlined"
+        placeholder={placeholder}
+        inputProps={{ ...params.inputProps, autoComplete: 'off', autoCorrect: 'off', autoCapitalize: 'none', spellCheck: 'false' }}
+      />
+    )}
     onChange={(e, newSelectedOptions: AutocompleteOption[]) => {
       setSelectedOptionsLocally(newSelectedOptions);
       setSelectedOptionsRemotely(newSelectedOptions);

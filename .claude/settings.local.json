@@ -2,6 +2,9 @@
   "permissions": {
     "allow": [
       "WebSearch"
+    ],
+    "additionalDirectories": [
+      "c:\\github\\mtgcb-web-v2"
     ]
   }
 }
