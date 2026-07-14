@@ -137,6 +137,9 @@ const CardName = styled.div({ whiteSpace: 'nowrap', overflow: 'hidden', textOver
 const CardImageContainer = styled.div({
   position: 'relative',
   perspective: '1400px',
+  // Mid-flip, the 3D projection bulges wider than the box; clip it (as mtgcb does)
+  // so the overflow:auto wrapper never grows a scrollbar during the animation.
+  overflow: 'hidden',
 });
 
 const CardFlipper = styled.div<{ $isFlipped: boolean }>((props) => ({
