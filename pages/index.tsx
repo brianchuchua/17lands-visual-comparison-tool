@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTheme } from '@material-ui/core/styles';
 import Container from '@material-ui/core/Container';
 import Grid from '@material-ui/core/Grid';
 import InputLabel from '@material-ui/core/InputLabel';
@@ -86,6 +87,7 @@ const getKeywordFilterWords = (cardData): string[] =>
 type TypeFilterState = 'include' | 'exclude';
 
 const HomePage: React.FC = () => {
+  const theme = useTheme();
   const [selectableCards, setSelectableCards] = useState([]);
   const [selectedCards, setSelectedCards] = useState([]);
   const [selectedSortByOption, setSelectedSortByOption] = useState('ever_drawn_win_rate');
@@ -584,7 +586,23 @@ const HomePage: React.FC = () => {
               vertical: 'top',
               horizontal: 'center',
             }}
+            // Never fill the whole screen — leaves backdrop visible to tap-dismiss on mobile
+            PaperProps={{ style: { maxHeight: '85vh' } }}
           >
+            {/* On phones the popover covers ~the whole viewport, leaving no backdrop to
+                tap-dismiss and no Escape key — so give an explicit close button. The
+                zero-height sticky wrapper overlays it on the "View options:" row without
+                adding vertical space, and keeps it reachable after scrolling the long
+                type list (default 48px size — small is under the ~44px touch target). */}
+            <div style={{ position: 'sticky', top: 0, zIndex: 1, height: 0 }}>
+              <IconButton
+                aria-label="Close settings menu"
+                onClick={handleCloseSettingsMenu}
+                style={{ position: 'absolute', top: '4px', right: '4px', backgroundColor: theme.palette.background.paper }}
+              >
+                <CloseIcon />
+              </IconButton>
+            </div>
             <div style={{ margin: '10px', padding: '10px' }}>
               <FormControl component="fieldset">
                 <FormLabel component="legend" disabled>
