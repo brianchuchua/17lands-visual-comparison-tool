@@ -14,6 +14,11 @@ import FormGroup from '@material-ui/core/FormGroup';
 import FormControlLabel from '@material-ui/core/FormControlLabel';
 import Switch from '@material-ui/core/Switch';
 import SettingsIcon from '@material-ui/icons/Settings';
+import CheckIcon from '@material-ui/icons/Check';
+import CloseIcon from '@material-ui/icons/Close';
+import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
+import Button from '@material-ui/core/Button';
+import Collapse from '@material-ui/core/Collapse';
 import Divider from '@material-ui/core/Divider';
 import ToggleButton from '@material-ui/lab/ToggleButton';
 import ToggleButtonGroup from '@material-ui/lab/ToggleButtonGroup';
@@ -23,6 +28,50 @@ import CardBox, { Card } from '../features/comparison/CardBox';
 import AutocompleteWithNegation, { AutocompleteOption } from '../components/AutocompleteWithNegation';
 import { sortByOptions } from '../features/comparison/sortByOptions';
 import { timePeriodOptions } from '../features/comparison/timePeriodOptions';
+
+const TYPE_DISPLAY_ORDER = [
+  'Creature',
+  'Instant',
+  'Sorcery',
+  'Enchantment',
+  'Artifact',
+  'Land',
+  'Planeswalker',
+  'Battle',
+  'Kindred',
+  'Tribal',
+  'Legendary',
+  'Basic',
+  'Snow',
+];
+
+// The API's `types` field holds full type lines like "Enchantment Creature - Saga Dragon"
+// (one entry per card face); types/supertypes sit before the dash, subtypes after it.
+const getCardTypeWords = (cardData, section: 'types' | 'subtypes'): string[] => {
+  const words = [];
+  (cardData?.types || []).forEach((typeLine) => {
+    const segments = String(typeLine).split(/\s+[-—–]\s+|—/);
+    const segment = section === 'types' ? segments[0] : segments.slice(1).join(' ');
+    segment.split(/\s+/).forEach((word) => {
+      if (word && words.indexOf(word) === -1) {
+        words.push(word);
+      }
+    });
+  });
+  return words;
+};
+
+const getAllCardTypeWords = (cardData): string[] => {
+  const words = getCardTypeWords(cardData, 'types');
+  getCardTypeWords(cardData, 'subtypes').forEach((word) => {
+    if (words.indexOf(word) === -1) {
+      words.push(word);
+    }
+  });
+  return words;
+};
+
+type TypeFilterState = 'include' | 'exclude';
 
 const HomePage: React.FC = () => {
   const [selectableCards, setSelectableCards] = useState([]);
@@ -54,6 +103,10 @@ const HomePage: React.FC = () => {
     G: true,
     C: true,
   });
+
+  const [selectedTypes, setSelectedTypes] = useState<Record<string, TypeFilterState>>({});
+  const [typeFilterMode, setTypeFilterMode] = useState<'OR' | 'AND'>('OR');
+  const [showMoreTypes, setShowMoreTypes] = useState(false);
 
   const [additionalDataToShow, setAdditionalDataToShow] = useState({
     ever_drawn_win_rate: false,
@@ -193,36 +246,111 @@ const HomePage: React.FC = () => {
     setSelectedCards(sortedCards);
   }, [selectedSortByOption]);
 
+  // Every type/supertype present in the currently loaded set, in canonical display order
+  const availableTypes = cards
+    .reduce((typesInSet, card) => {
+      getCardTypeWords(card, 'types').forEach((word) => {
+        if (typesInSet.indexOf(word) === -1) {
+          typesInSet.push(word);
+        }
+      });
+      return typesInSet;
+    }, [] as string[])
+    .sort((a, b) => {
+      const aIndex = TYPE_DISPLAY_ORDER.indexOf(a);
+      const bIndex = TYPE_DISPLAY_ORDER.indexOf(b);
+      if (aIndex === -1 && bIndex === -1) {
+        return a.localeCompare(b);
+      }
+      if (aIndex === -1) {
+        return 1;
+      }
+      if (bIndex === -1) {
+        return -1;
+      }
+      return aIndex - bIndex;
+    });
+
+  // Every subtype (Hero, Villain, Equipment, Saga, ...) in the set — the exhaustive
+  // list for synergy research, tucked behind the "Even more types" expander
+  const availableSubtypes = cards
+    .reduce((subtypesInSet, card) => {
+      getCardTypeWords(card, 'subtypes').forEach((word) => {
+        if (subtypesInSet.indexOf(word) === -1 && availableTypes.indexOf(word) === -1) {
+          subtypesInSet.push(word);
+        }
+      });
+      return subtypesInSet;
+    }, [] as string[])
+    .sort((a, b) => a.localeCompare(b));
+
+  // Shown on the collapsed "Even more types" button so subtype filters can't hide while active
+  const selectedSubtypeCount = availableSubtypes.filter((type) => selectedTypes[type]).length;
+
+  // ✓ types combine with AND/OR per typeFilterMode; ✕ (NOT) types always exclude
+  const matchesTypeFilters = (cardData) => {
+    const includedTypes = Object.keys(selectedTypes).filter((type) => selectedTypes[type] === 'include');
+    const excludedTypes = Object.keys(selectedTypes).filter((type) => selectedTypes[type] === 'exclude');
+    if (includedTypes.length === 0 && excludedTypes.length === 0) {
+      return true;
+    }
+
+    const cardTypeWords = getAllCardTypeWords(cardData);
+    if (excludedTypes.some((type) => cardTypeWords.indexOf(type) !== -1)) {
+      return false;
+    }
+    if (includedTypes.length === 0) {
+      return true;
+    }
+    return typeFilterMode === 'AND'
+      ? includedTypes.every((type) => cardTypeWords.indexOf(type) !== -1)
+      : includedTypes.some((type) => cardTypeWords.indexOf(type) !== -1);
+  };
+
+  const cardMatchesFilters = (card, textToMatch) => {
+    const matchesText = textToMatch === '' || card.label.toLowerCase().includes(textToMatch.toLowerCase());
+
+    const matchesRarity = !card.data.rarity || selectedRarities[card.data.rarity.toLowerCase()];
+
+    let matchesColor = true;
+    if (!card.data.color || card.data.color === '') {
+      matchesColor = selectedColors.C;
+    } else {
+      const cardColors = card.data.color.split('');
+      const selectedColorsList = Object.entries(selectedColors)
+        .filter(([color, isSelected]) => color !== 'C' && isSelected)
+        .map(([color]) => color);
+
+      if (selectedColorsList.length === 0 && !selectedColors.C) {
+        matchesColor = false;
+      } else {
+        matchesColor = cardColors.some((color) => selectedColors[color]);
+      }
+    }
+
+    return matchesText && matchesRarity && matchesColor && matchesTypeFilters(card.data);
+  };
+
   useEffect(() => {
     if (viewAllCards) {
-      const filteredCards = selectableCards.filter(card => {
-        const rarityMatch = !card.data.rarity || selectedRarities[card.data.rarity.toLowerCase()];
-        
-        let colorMatch = true;
-        if (!card.data.color || card.data.color === "") {
-          colorMatch = selectedColors.C;
-        } else {
-          const cardColors = card.data.color.split('');
-          const selectedColorsList = Object.entries(selectedColors)
-            .filter(([color, isSelected]) => color !== 'C' && isSelected)
-            .map(([color]) => color);
-            
-          if (selectedColorsList.length === 0 && !selectedColors.C) {
-            colorMatch = false;
-          } else {
-            colorMatch = cardColors.some(color => selectedColors[color]);
-          }
-        }
-        
-        return rarityMatch && colorMatch;
-      });
-      
+      const filteredCards = selectableCards.filter((card) => cardMatchesFilters(card, searchText));
       const sortedCards = [...filteredCards].sort(sortByCardAttribute);
       setDisplayedCards(sortedCards);
     } else {
       setDisplayedCards(selectedCards);
     }
-  }, [cards, viewAllCards, selectedCards, selectableCards, selectedSortByOption, selectedRarities, selectedColors]);
+  }, [
+    cards,
+    viewAllCards,
+    selectedCards,
+    selectableCards,
+    selectedSortByOption,
+    selectedRarities,
+    selectedColors,
+    selectedTypes,
+    typeFilterMode,
+    searchText,
+  ]);
 
   const sortByCardAttribute = (a, b) => {
     const attribute = selectedSortByOption;
@@ -266,6 +394,9 @@ const HomePage: React.FC = () => {
     const newSelectedExpansion = event.target.value as string;
     setSelectedExpansion(newSelectedExpansion);
     setSelectedCards([]);
+    // Each set has its own type list (especially subtypes), so carrying selections
+    // across sets would leave invisible filters active
+    setSelectedTypes({});
   };
 
   const handleSelectedFormatChange = (event: React.ChangeEvent<{ value: unknown }>) => {
@@ -281,6 +412,35 @@ const HomePage: React.FC = () => {
   const handleSelectedDeckColorsChange = (event: React.ChangeEvent<{ value: unknown }>) => {
     const newSelectedDeckColors = event.target.value as string;
     setSelectedDeckColors(newSelectedDeckColors);
+  };
+
+  const renderTypeFilterChip = (type: string) => {
+    const typeState = selectedTypes[type];
+    return (
+      <ToggleButton
+        key={type}
+        value={type}
+        size="small"
+        selected={Boolean(typeState)}
+        onChange={() => handleTypeFilterClick(type)}
+        title={
+          typeState === 'include'
+            ? `Click to exclude ${type} cards`
+            : typeState === 'exclude'
+            ? `Click to stop filtering by ${type}`
+            : `Click to require ${type}`
+        }
+        style={{
+          padding: '2px 10px',
+          textTransform: 'none',
+          ...(typeState === 'exclude' ? { backgroundColor: 'rgba(244, 67, 54, 0.25)', textDecoration: 'line-through' } : {}),
+        }}
+      >
+        {typeState === 'include' && <CheckIcon style={{ fontSize: '16px', marginRight: '4px' }} />}
+        {typeState === 'exclude' && <CloseIcon style={{ fontSize: '16px', marginRight: '4px' }} />}
+        {type}
+      </ToggleButton>
+    );
   };
 
   const handleSettingsButtonClick = (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -314,72 +474,32 @@ const HomePage: React.FC = () => {
     setSelectedColors(updatedColors);
   };
 
+  // Re-filtering happens in the displayedCards effect above, which watches these states
   const handleViewAllCardsChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const newViewAllCards = event.target.checked;
-    setViewAllCards(newViewAllCards);
-
-    if (newViewAllCards) {
-      const filteredCards = selectableCards.filter(card => {
-        const matchesText = searchText === '' || card.label.toLowerCase().includes(searchText.toLowerCase());
-        
-        const matchesRarity = !card.data.rarity || selectedRarities[card.data.rarity.toLowerCase()];
-        
-        let matchesColor = true;
-        if (!card.data.color || card.data.color === "") {
-          matchesColor = selectedColors.C;
-        } else {
-          const cardColors = card.data.color.split('');
-          const selectedColorsList = Object.entries(selectedColors)
-            .filter(([color, isSelected]) => color !== 'C' && isSelected)
-            .map(([color]) => color);
-            
-          if (selectedColorsList.length === 0 && !selectedColors.C) {
-            matchesColor = false;
-          } else {
-            matchesColor = cardColors.some(color => selectedColors[color]);
-          }
-        }
-        
-        return matchesText && matchesRarity && matchesColor;
-      });
-      
-      const sortedCards = [...filteredCards].sort(sortByCardAttribute);
-      setDisplayedCards(sortedCards);
-    } else {
-      setDisplayedCards(selectedCards);
-    }
+    setViewAllCards(event.target.checked);
   };
 
   const handleSearchTextChange = (newSearchText: string) => {
     setSearchText(newSearchText);
+  };
 
-    if (viewAllCards) {
-      const filteredCards = selectableCards.filter((card) => {
-        const matchesText = card.label.toLowerCase().includes(newSearchText.toLowerCase());
-        
-        const matchesRarity = !card.data.rarity || selectedRarities[card.data.rarity.toLowerCase()];
-        
-        let matchesColor = true;
-        if (!card.data.color || card.data.color === "") {
-          matchesColor = selectedColors.C;
-        } else {
-          const cardColors = card.data.color.split('');
-          const selectedColorsList = Object.entries(selectedColors)
-            .filter(([color, isSelected]) => color !== 'C' && isSelected)
-            .map(([color]) => color);
-            
-          if (selectedColorsList.length === 0 && !selectedColors.C) {
-            matchesColor = false;
-          } else {
-            matchesColor = cardColors.some(color => selectedColors[color]);
-          }
-        }
-        
-        return matchesText && matchesRarity && matchesColor;
-      });
-      
-      const sortedCards = [...filteredCards].sort(sortByCardAttribute);
-      setDisplayedCards(sortedCards);
+  const handleTypeFilterClick = (type: string) => {
+    setSelectedTypes((previousSelectedTypes) => {
+      const updatedTypes = { ...previousSelectedTypes };
+      if (!updatedTypes[type]) {
+        updatedTypes[type] = 'include';
+      } else if (updatedTypes[type] === 'include') {
+        updatedTypes[type] = 'exclude';
+      } else {
+        delete updatedTypes[type];
+      }
+      return updatedTypes;
+    });
+  };
+
+  const handleTypeFilterModeChange = (event: React.MouseEvent<HTMLElement>, newMode: 'OR' | 'AND' | null) => {
+    if (newMode) {
+      setTypeFilterMode(newMode);
     }
   };
 
@@ -499,6 +619,62 @@ const HomePage: React.FC = () => {
                         ))}
                       </ToggleButtonGroup>
                     </div>
+                    {availableTypes.length > 0 && (
+                      <>
+                        <Divider style={{ margin: '10px 0' }} />
+                        <FormLabel component="legend" disabled>
+                          Type filters:
+                        </FormLabel>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '10px', maxWidth: '400px' }}>
+                          {availableTypes.map(renderTypeFilterChip)}
+                        </div>
+                        {availableSubtypes.length > 0 && (
+                          <>
+                            <Button
+                              size="small"
+                              onClick={() => setShowMoreTypes(!showMoreTypes)}
+                              style={{ textTransform: 'none', marginTop: '8px', alignSelf: 'flex-start', color: 'inherit', opacity: 0.7 }}
+                              endIcon={
+                                <ExpandMoreIcon
+                                  style={{
+                                    transition: 'transform 0.2s ease-in-out',
+                                    transform: showMoreTypes ? 'rotate(180deg)' : 'rotate(0deg)',
+                                  }}
+                                />
+                              }
+                            >
+                              Even more types ({availableSubtypes.length})
+                              {!showMoreTypes && selectedSubtypeCount > 0 && ` — ${selectedSubtypeCount} active`}
+                            </Button>
+                            <Collapse in={showMoreTypes}>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '6px', maxWidth: '400px' }}>
+                                {availableSubtypes.map(renderTypeFilterChip)}
+                              </div>
+                            </Collapse>
+                          </>
+                        )}
+                        <div style={{ display: 'flex', alignItems: 'center', marginTop: '10px' }}>
+                          <ToggleButtonGroup
+                            value={typeFilterMode}
+                            exclusive
+                            onChange={handleTypeFilterModeChange}
+                            aria-label="type filter combine mode"
+                            size="small"
+                          >
+                            <ToggleButton value="OR" aria-label="match any type" style={{ padding: '2px 10px' }}>
+                              OR
+                            </ToggleButton>
+                            <ToggleButton value="AND" aria-label="match all types" style={{ padding: '2px 10px' }}>
+                              AND
+                            </ToggleButton>
+                          </ToggleButtonGroup>
+                          <Typography variant="caption" color="textSecondary" style={{ marginLeft: '10px', maxWidth: '260px' }}>
+                            {typeFilterMode === 'AND' ? 'Cards must have every ✓ type.' : 'Cards can have any ✓ type.'} ✕ types are
+                            always excluded.
+                          </Typography>
+                        </div>
+                      </>
+                    )}
                   </>
                 )}
                 <Divider style={{ margin: '10px 0' }} />
