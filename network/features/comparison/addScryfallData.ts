@@ -2,7 +2,7 @@ import axios from 'axios';
 import NodeCache from 'node-cache';
 
 const ONE_DAY = 60 * 60 * 24;
-const keywordCache = new NodeCache({ stdTTL: ONE_DAY, useClones: false }); // keyed by Scryfall card id
+const scryfallCache = new NodeCache({ stdTTL: ONE_DAY, useClones: false }); // keyed by Scryfall card id
 
 const SCRYFALL_COLLECTION_URL = 'https://api.scryfall.com/cards/collection';
 const BATCH_SIZE = 75; // Scryfall's max identifiers per collection request
@@ -14,20 +14,47 @@ const getScryfallId = (imageUrl: string): string | null => {
   return match ? match[1] : null;
 };
 
+interface ScryfallCacheEntry {
+  keywords: string[];
+  priceUsd: number | null;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const toCacheEntry = (scryfallCard: any): ScryfallCacheEntry => {
+  // Foil-only cards (and some Arena-only printings) have no regular USD price
+  const price = scryfallCard?.prices?.usd ?? scryfallCard?.prices?.usd_foil ?? null;
+  return {
+    keywords: scryfallCard?.keywords || [],
+    priceUsd: price === null ? null : Number(price),
+  };
+};
+
+const EMPTY_ENTRY: ScryfallCacheEntry = { keywords: [], priceUsd: null };
+
 const delay = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
-// Annotates 17Lands cards with Scryfall's `keywords` list (Flash, Flying, ...), which the
-// 17Lands payload doesn't carry. Fails soft: if Scryfall is unreachable, cards get an empty
-// keywords list and the rest of the card data is unaffected.
+// Annotates 17Lands cards with the Scryfall data the 17Lands payload doesn't carry:
+// `keywords` (Flash, Flying, ...) and `price_usd`. Matched by the Scryfall card id in the
+// image URL. Fails soft: if Scryfall is unreachable, cards get empty keywords / null price
+// and the rest of the card data is unaffected.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const addScryfallKeywords = async (cards: any[]): Promise<void> => {
+export const addScryfallData = async (cards: any[]): Promise<void> => {
   const idsToFetch = [];
   cards.forEach((card) => {
     const scryfallId = getScryfallId(card?.url);
-    if (scryfallId && keywordCache.get(scryfallId) === undefined && idsToFetch.indexOf(scryfallId) === -1) {
+    if (scryfallId && scryfallCache.get(scryfallId) === undefined && idsToFetch.indexOf(scryfallId) === -1) {
       idsToFetch.push(scryfallId);
     }
   });
+
+  // Steady state (everything cached) logs nothing; fetch lines only appear on cold boots
+  // and cache expiry, so a log tail stays readable
+  if (idsToFetch.length > 0) {
+    console.log(
+      `[scryfall] Fetching keywords/prices for ${idsToFetch.length} cards in ${Math.ceil(idsToFetch.length / BATCH_SIZE)} batch(es)...`,
+    );
+  }
+  const startedAt = Date.now();
 
   try {
     for (let batchStart = 0; batchStart < idsToFetch.length; batchStart += BATCH_SIZE) {
@@ -46,12 +73,12 @@ export const addScryfallKeywords = async (cards: any[]): Promise<void> => {
         },
       );
       (response?.data?.data || []).forEach((scryfallCard) => {
-        keywordCache.set(scryfallCard.id, scryfallCard.keywords || []);
+        scryfallCache.set(scryfallCard.id, toCacheEntry(scryfallCard));
       });
       // Ids Scryfall couldn't find still get a cache entry so we don't refetch them every request
       batch.forEach((id) => {
-        if (keywordCache.get(id) === undefined) {
-          keywordCache.set(id, []);
+        if (scryfallCache.get(id) === undefined) {
+          scryfallCache.set(id, EMPTY_ENTRY);
         }
       });
       if (batchStart + BATCH_SIZE < idsToFetch.length) {
@@ -59,12 +86,18 @@ export const addScryfallKeywords = async (cards: any[]): Promise<void> => {
         await delay(100); // Scryfall asks for ~10 requests/second
       }
     }
+    if (idsToFetch.length > 0) {
+      console.log(`[scryfall] Done in ${((Date.now() - startedAt) / 1000).toFixed(1)}s`);
+    }
   } catch (error) {
     // Scryfall being down shouldn't take the 17Lands card data down with it
+    console.log(`[scryfall] Fetch failed (cards will have no keywords/prices until retry): ${error.message}`);
   }
 
   cards.forEach((card) => {
     const scryfallId = getScryfallId(card?.url);
-    card.keywords = (scryfallId && keywordCache.get(scryfallId)) || [];
+    const entry = (scryfallId && scryfallCache.get<ScryfallCacheEntry>(scryfallId)) || EMPTY_ENTRY;
+    card.keywords = entry.keywords;
+    card.price_usd = entry.priceUsd;
   });
 };

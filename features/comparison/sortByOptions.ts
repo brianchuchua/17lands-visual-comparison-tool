@@ -47,4 +47,11 @@ export const sortByOptions = [
     shortLabel: 'ATA',
     usePercentage: false,
   },
+  {
+    name: 'price_usd',
+    label: 'Price',
+    shortLabel: 'USD',
+    usePercentage: false,
+    useCurrency: true,
+  },
 ];

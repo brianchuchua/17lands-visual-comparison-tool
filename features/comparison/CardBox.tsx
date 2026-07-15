@@ -13,12 +13,15 @@ interface CardBoxProps {
   additionalDataToShow: any; // eslint-disable-line @typescript-eslint/no-explicit-any
 }
 
-const formatAttribute = (attributeValue: string, usePercentage?: boolean) => {
-  const style = usePercentage ? 'percent' : 'decimal';
-
-  // 17Lands nulls out win rates for cards with small sample sizes (< 500 games)
+const formatAttribute = (attributeValue: string, style: 'percent' | 'decimal' | 'currency') => {
+  // 17Lands nulls out win rates for cards with small sample sizes (< 500 games);
+  // Scryfall has no USD price for some Arena-only cards
   if (attributeValue === null || attributeValue === undefined || Number.isNaN(Number(attributeValue))) {
     return 'N/A';
+  }
+
+  if (style === 'currency') {
+    return Number(attributeValue).toLocaleString(undefined, { style: 'currency', currency: 'USD' });
   }
 
   return Number(attributeValue).toLocaleString(undefined, {
@@ -28,9 +31,17 @@ const formatAttribute = (attributeValue: string, usePercentage?: boolean) => {
   });
 };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const getFormatStyle = (sortByOption: any): 'percent' | 'decimal' | 'currency' => {
+  if (sortByOption?.useCurrency) {
+    return 'currency';
+  }
+  return sortByOption?.usePercentage ? 'percent' : 'decimal';
+};
+
 const CardBox: React.FC<CardBoxProps> = ({ card, attributeLabel, attributeValue, attributeKey, loading, additionalDataToShow }) => {
-  const shouldUsePercentage = attributeLabel !== 'Average Last Seen At' && attributeLabel !== 'Average Pick Taken At';
-  const attributeValueFormatted = formatAttribute(attributeValue, shouldUsePercentage);
+  const attributeOption = sortByOptions.find((option) => option.name === attributeKey);
+  const attributeValueFormatted = formatAttribute(attributeValue, getFormatStyle(attributeOption));
 
   const [isFlipped, setIsFlipped] = useState(false);
   // Back image is only requested on first flip — avoids fetching back faces for cards
@@ -89,7 +100,7 @@ const CardBox: React.FC<CardBoxProps> = ({ card, attributeLabel, attributeValue,
                   }
                   if (additionalDataToShow[key]) {
                     const cardMetaData = sortByOptions.find((option) => option.name === key);
-                    const dataFormatted = formatAttribute(card[key], cardMetaData.usePercentage);
+                    const dataFormatted = formatAttribute(card[key], getFormatStyle(cardMetaData));
                     return (
                       <span style={{ opacity: '40%', whiteSpace: 'normal' }}>
                         {' '}

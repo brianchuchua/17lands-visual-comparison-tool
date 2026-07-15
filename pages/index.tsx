@@ -78,6 +78,8 @@ const getAllCardTypeWords = (cardData): string[] => {
 const KEYWORD_FILTERS = ['Flash'];
 const TYPE_CHIP_LABELS = { Flash: 'Cards with Flash' };
 
+const MONEY_CARD_THRESHOLD = 10; // USD
+
 const getKeywordFilterWords = (cardData): string[] =>
   KEYWORD_FILTERS.filter((keyword) => (cardData?.keywords || []).indexOf(keyword) !== -1);
 
@@ -117,6 +119,7 @@ const HomePage: React.FC = () => {
   const [selectedTypes, setSelectedTypes] = useState<Record<string, TypeFilterState>>({});
   const [typeFilterMode, setTypeFilterMode] = useState<'OR' | 'AND'>('OR');
   const [showMoreTypes, setShowMoreTypes] = useState(false);
+  const [moneyCardsOnly, setMoneyCardsOnly] = useState(false);
 
   const [additionalDataToShow, setAdditionalDataToShow] = useState({
     ever_drawn_win_rate: false,
@@ -127,6 +130,7 @@ const HomePage: React.FC = () => {
     drawn_improvement_win_rate: false,
     avg_seen: false,
     avg_pick: false,
+    price_usd: false,
   });
 
   const [filters, setFilters] = useState({
@@ -340,7 +344,10 @@ const HomePage: React.FC = () => {
       }
     }
 
-    return matchesText && matchesRarity && matchesColor && matchesTypeFilters(card.data);
+    // Number(null) is 0 and Number(undefined) is NaN, so priceless cards never count as money cards
+    const matchesMoney = !moneyCardsOnly || Number(card.data.price_usd) >= MONEY_CARD_THRESHOLD;
+
+    return matchesText && matchesRarity && matchesColor && matchesTypeFilters(card.data) && matchesMoney;
   };
 
   useEffect(() => {
@@ -361,6 +368,7 @@ const HomePage: React.FC = () => {
     selectedColors,
     selectedTypes,
     typeFilterMode,
+    moneyCardsOnly,
     searchText,
   ]);
 
@@ -514,6 +522,18 @@ const HomePage: React.FC = () => {
     if (newMode) {
       setTypeFilterMode(newMode);
     }
+  };
+
+  const handleMoneyCardsOnlyChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setMoneyCardsOnly(event.target.checked);
+  };
+
+  const handleResetFilters = () => {
+    setSelectedRarities({ mythic: true, rare: true, uncommon: true, common: true });
+    setSelectedColors({ W: true, U: true, B: true, R: true, G: true, C: true });
+    setSelectedTypes({});
+    setTypeFilterMode('OR');
+    setMoneyCardsOnly(false);
   };
 
   return (
@@ -688,6 +708,18 @@ const HomePage: React.FC = () => {
                         </div>
                       </>
                     )}
+                    <Divider style={{ margin: '10px 0' }} />
+                    <FormLabel component="legend" disabled>
+                      Price filters:
+                    </FormLabel>
+                    <FormControlLabel
+                      control={<Switch checked={moneyCardsOnly} onChange={handleMoneyCardsOnlyChange} name="moneyCardsOnly" />}
+                      label={`Money cards only ($${MONEY_CARD_THRESHOLD}+)`}
+                    />
+                    <Divider style={{ margin: '10px 0' }} />
+                    <Button variant="outlined" size="small" onClick={handleResetFilters} style={{ alignSelf: 'flex-start' }}>
+                      Reset filters
+                    </Button>
                   </>
                 )}
                 <Divider style={{ margin: '10px 0' }} />
