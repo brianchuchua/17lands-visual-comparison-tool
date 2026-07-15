@@ -1,6 +1,6 @@
 {
   "name": "17lands-visual-comparison-tool",
-  "version": "1.13.1",
+  "version": "1.14.0",
   "private": true,
   "scripts": {
     "dev": "dotenv -e .env -- next dev -p 4000",

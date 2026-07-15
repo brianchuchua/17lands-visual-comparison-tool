@@ -1,4 +1,5 @@
 import getWithCache from '../../getWithCache';
+import { addScryfallKeywords } from './addScryfallKeywords';
 
 export interface GetCardDataFunction {
   (params: CardDataParams): any; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -21,7 +22,9 @@ export const getCardData: GetCardDataFunction = async ({ expansion, format, colo
     });
 
     // The card list is nested under a "data" key, alongside copyright/notes fields
-    return response?.data ?? [];
+    const cards = response?.data ?? [];
+    await addScryfallKeywords(cards);
+    return cards;
   } catch (error) {
     return null;
   }

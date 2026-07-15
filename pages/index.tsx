@@ -32,6 +32,7 @@ import { timePeriodOptions } from '../features/comparison/timePeriodOptions';
 const TYPE_DISPLAY_ORDER = [
   'Creature',
   'Instant',
+  'Flash',
   'Sorcery',
   'Enchantment',
   'Artifact',
@@ -70,6 +71,15 @@ const getAllCardTypeWords = (cardData): string[] => {
   });
   return words;
 };
+
+// Keyword-based pseudo-types: not part of the type line, sourced from the Scryfall
+// `keywords` field the server merges in. Kept to an explicit allowlist so keyword
+// names can never collide with real type/subtype chips.
+const KEYWORD_FILTERS = ['Flash'];
+const TYPE_CHIP_LABELS = { Flash: 'Cards with Flash' };
+
+const getKeywordFilterWords = (cardData): string[] =>
+  KEYWORD_FILTERS.filter((keyword) => (cardData?.keywords || []).indexOf(keyword) !== -1);
 
 type TypeFilterState = 'include' | 'exclude';
 
@@ -249,11 +259,13 @@ const HomePage: React.FC = () => {
   // Every type/supertype present in the currently loaded set, in canonical display order
   const availableTypes = cards
     .reduce((typesInSet, card) => {
-      getCardTypeWords(card, 'types').forEach((word) => {
-        if (typesInSet.indexOf(word) === -1) {
-          typesInSet.push(word);
-        }
-      });
+      getCardTypeWords(card, 'types')
+        .concat(getKeywordFilterWords(card))
+        .forEach((word) => {
+          if (typesInSet.indexOf(word) === -1) {
+            typesInSet.push(word);
+          }
+        });
       return typesInSet;
     }, [] as string[])
     .sort((a, b) => {
@@ -295,7 +307,7 @@ const HomePage: React.FC = () => {
       return true;
     }
 
-    const cardTypeWords = getAllCardTypeWords(cardData);
+    const cardTypeWords = getAllCardTypeWords(cardData).concat(getKeywordFilterWords(cardData));
     if (excludedTypes.some((type) => cardTypeWords.indexOf(type) !== -1)) {
       return false;
     }
@@ -416,6 +428,7 @@ const HomePage: React.FC = () => {
 
   const renderTypeFilterChip = (type: string) => {
     const typeState = selectedTypes[type];
+    const typeLabel = TYPE_CHIP_LABELS[type] || type;
     return (
       <ToggleButton
         key={type}
@@ -425,10 +438,10 @@ const HomePage: React.FC = () => {
         onChange={() => handleTypeFilterClick(type)}
         title={
           typeState === 'include'
-            ? `Click to exclude ${type} cards`
+            ? `Click to exclude ${typeLabel}`
             : typeState === 'exclude'
-            ? `Click to stop filtering by ${type}`
-            : `Click to require ${type}`
+            ? `Click to stop filtering by ${typeLabel}`
+            : `Click to require ${typeLabel}`
         }
         style={{
           padding: '2px 10px',
@@ -438,7 +451,7 @@ const HomePage: React.FC = () => {
       >
         {typeState === 'include' && <CheckIcon style={{ fontSize: '16px', marginRight: '4px' }} />}
         {typeState === 'exclude' && <CloseIcon style={{ fontSize: '16px', marginRight: '4px' }} />}
-        {type}
+        {typeLabel}
       </ToggleButton>
     );
   };
